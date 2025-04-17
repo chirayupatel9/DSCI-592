@@ -387,21 +387,3 @@ layout: end
 ---
 
 # Thank You!
-
-<div class="grid grid-cols-2 gap-2">
-<div class="text-xs">
-
-## Project Links
-- GitHub: [chirayupatel9/DSCI-592](https://github.com/chirayupatel9/DSCI-592)
-- Documentation: [Project Wiki](https://github.com/chirayupatel9/DSCI-592/wiki)
-
-</div>
-<div class="text-xs">
-
-## Resources
-- API Documentation
-- Model Reports
-- User Guide
-
-</div>
-</div>
