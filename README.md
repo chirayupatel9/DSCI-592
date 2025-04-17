@@ -104,3 +104,54 @@ curl -X POST http://localhost:5000/predict \
 - Trains multiple machine learning models (Random Forest, Gradient Boosting, Elastic Net)
 - Predicts material properties via a REST API
 - Allows searching for materials by various criteria
+
+## Workflow Diagram
+
+```mermaid
+flowchart TD
+    A[Data Collection] --> B[Data Preprocessing]
+    B --> C[Model Training]
+    C --> D[Model Evaluation]
+    D --> E[Model Deployment]
+    E --> F[Prediction API]
+    
+    subgraph Data Collection
+    A1[Load Materials Data] --> A2[Store in MongoDB]
+    end
+    
+    subgraph Data Preprocessing
+    B1[Handle Missing Values] --> B2[Feature Engineering]
+    B2 --> B3[Data Splitting]
+    end
+    
+    subgraph Model Training
+    C1[Random Forest] --> C2[Gradient Boosting]
+    C2 --> C3[Elastic Net]
+    end
+    
+    subgraph Model Evaluation
+    D1[Cross Validation] --> D2[Performance Metrics]
+    D2 --> D3[Model Selection]
+    end
+    
+    subgraph Prediction API
+    F1[Load Models] --> F2[Process Input]
+    F2 --> F3[Make Predictions]
+    F3 --> F4[Return Results]
+    end
+    
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#bbf,stroke:#333,stroke-width:2px
+    style C fill:#bfb,stroke:#333,stroke-width:2px
+    style D fill:#fbb,stroke:#333,stroke-width:2px
+    style E fill:#fbf,stroke:#333,stroke-width:2px
+    style F fill:#bff,stroke:#333,stroke-width:2px
+```
+
+This flowchart illustrates the complete workflow of the material property prediction system:
+1. Data Collection: Initial data loading and storage in MongoDB
+2. Data Preprocessing: Cleaning, feature engineering, and data splitting
+3. Model Training: Training multiple ML models (Random Forest, Gradient Boosting, Elastic Net)
+4. Model Evaluation: Cross-validation and performance assessment
+5. Model Deployment: Saving and preparing models for production
+6. Prediction API: REST API for making predictions and retrieving results
