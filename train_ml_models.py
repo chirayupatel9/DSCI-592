@@ -59,7 +59,13 @@ def preprocess_data(df, target='band_gap'):
     
     # For crystal systems, convert to one-hot encoding
     if "crystal_system" in df.columns:
+        # Ensure crystal_system is a string type
+        df["crystal_system"] = df["crystal_system"].astype(str)
+        # Convert to one-hot encoding
         crystal_system_dummies = pd.get_dummies(df["crystal_system"], prefix="crystal")
+        # Drop the original crystal_system column
+        df = df.drop("crystal_system", axis=1)
+        # Concatenate the one-hot encoded columns
         df = pd.concat([df, crystal_system_dummies], axis=1)
     
     # Combine feature sets
@@ -72,6 +78,14 @@ def preprocess_data(df, target='band_gap'):
     # Split data into features and target
     X = df[feature_cols]
     y = df[target]
+    
+    # Ensure all features are numeric
+    for col in X.columns:
+        if X[col].dtype == 'object':
+            X[col] = pd.to_numeric(X[col], errors='coerce')
+    
+    # Fill any remaining NaN values with 0
+    X = X.fillna(0)
     
     # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)

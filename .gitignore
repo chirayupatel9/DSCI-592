@@ -175,11 +175,5 @@ cython_debug/
 
 
 # Ignore all files in the data directory
-*.json
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.bmp
-*.tiff
-*.ico
+data/
+models/

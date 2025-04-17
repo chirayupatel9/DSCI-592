@@ -6,8 +6,9 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
-from flask import Flask, request, jsonify
-from dbconfig import MONGO_URI, MONGO_DB, MONGO_JSON_COLLECTION
+from flask import Flask, request, jsonify, send_file
+import io
+from dbconfig import MONGO_URI, MONGO_DB, MONGO_JSON_COLLECTION, MONGO_IMAGE_COLLECTION
 from pymongo import MongoClient
 
 app = Flask(__name__)
@@ -15,7 +16,8 @@ app = Flask(__name__)
 # Connect to MongoDB
 client = MongoClient(MONGO_URI)
 db = client[MONGO_DB]
-collection = db[MONGO_JSON_COLLECTION]
+json_collection = db[MONGO_JSON_COLLECTION]
+image_collection = db[MONGO_IMAGE_COLLECTION]
 
 # Load trained models
 model_dir = "models"
@@ -111,7 +113,7 @@ def predict():
         
         # If material_id is provided, look up in the database
         if material_id:
-            doc = collection.find_one({"material_id": material_id})
+            doc = json_collection.find_one({"material_id": material_id})
             if doc:
                 # Prepare result with actual values where available
                 result = {
@@ -226,15 +228,47 @@ def predict():
 def get_material(material_id):
     """API endpoint to get material information"""
     try:
-        doc = collection.find_one({"material_id": material_id})
+        doc = json_collection.find_one({"material_id": material_id})
         if doc:
             # Convert ObjectId to string for JSON serialization
             if '_id' in doc:
                 doc['_id'] = str(doc['_id'])
             
+            # Add image information if available
+            if 'image_id' in doc:
+                image_doc = image_collection.find_one({"image_id": doc['image_id']}, 
+                                                    {"_id": 0, "binary_data": 0})
+                if image_doc:
+                    doc['image_info'] = image_doc
+                    doc['image_url'] = f"/materials/{material_id}/image"
+            
             return jsonify(doc)
         else:
             return jsonify({"error": f"Material with ID {material_id} not found"}), 404
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/materials/<material_id>/image', methods=['GET'])
+def get_material_image(material_id):
+    """API endpoint to get material image"""
+    try:
+        # First get the material document to find the image_id
+        material = json_collection.find_one({"material_id": material_id})
+        if not material or 'image_id' not in material:
+            return jsonify({"error": "Material not found or has no associated image"}), 404
+        
+        # Get the image document
+        image_doc = image_collection.find_one({"image_id": material['image_id']})
+        if not image_doc or 'binary_data' not in image_doc:
+            return jsonify({"error": "Image not found"}), 404
+        
+        # Create a file-like object from the binary data
+        image_data = io.BytesIO(image_doc['binary_data'])
+        
+        # Send the file with the correct mimetype
+        mimetype = f"image/{image_doc['format'].lower()}"
+        return send_file(image_data, mimetype=mimetype)
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -272,16 +306,29 @@ def search_materials():
         if crystal_system:
             query['symmetry.crystal_system'] = crystal_system
         
+        # Has image filter
+        has_image = request.args.get('has_image')
+        if has_image and has_image.lower() == 'true':
+            query['image_id'] = {'$exists': True}
+        
         # Limit results
         limit = int(request.args.get('limit', 10))
         
         results = []
-        cursor = collection.find(query).limit(limit)
+        cursor = json_collection.find(query).limit(limit)
         
         for doc in cursor:
             # Convert ObjectId to string for JSON serialization
             if '_id' in doc:
                 doc['_id'] = str(doc['_id'])
+            
+            # Add image information if available
+            if 'image_id' in doc:
+                image_doc = image_collection.find_one({"image_id": doc['image_id']}, 
+                                                    {"_id": 0, "binary_data": 0})
+                if image_doc:
+                    doc['image_info'] = image_doc
+                    doc['image_url'] = f"/materials/{doc['material_id']}/image"
             
             results.append(doc)
         

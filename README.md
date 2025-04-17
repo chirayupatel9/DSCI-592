@@ -12,7 +12,7 @@ This project creates a data processing, analysis, and machine learning pipeline 
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/DSCI-592.git
+git clone https://github.com/chirayupatel9/DSCI-592.git
 cd DSCI-592
 ```
 
@@ -24,6 +24,8 @@ pip install -r requirements.txt
 3. Make sure MongoDB is running on your local machine.
 
 ## Usage
+
+## **Download data from DataFed then do the needful**
 
 ### 1. Load data into MongoDB
 
