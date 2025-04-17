@@ -140,12 +140,6 @@ flowchart TD
     F3 --> F4[Return Results]
     end
     
-    style A fill:#f9f,stroke:#333,stroke-width:2px
-    style B fill:#bbf,stroke:#333,stroke-width:2px
-    style C fill:#bfb,stroke:#333,stroke-width:2px
-    style D fill:#fbb,stroke:#333,stroke-width:2px
-    style E fill:#fbf,stroke:#333,stroke-width:2px
-    style F fill:#bff,stroke:#333,stroke-width:2px
 ```
 
 This flowchart illustrates the complete workflow of the material property prediction system:
