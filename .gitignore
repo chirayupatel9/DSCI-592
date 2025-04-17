@@ -173,6 +173,7 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+node_modules/
 
 # Ignore all files in the data directory
 data/
