@@ -207,7 +207,7 @@ layout: default
 <div class="grid grid-cols-2 gap-2 mt-4">
 <div>
 
-![Element Distribution](plots/element_distribution.png)
+
 
 ## Elements
 - Most common elements
@@ -217,7 +217,6 @@ layout: default
 </div>
 <div>
 
-![Property Correlation](plots/property_correlation.png)
 
 ## Correlations
 - Property relationships
@@ -264,8 +263,6 @@ graph TD
 <div class="grid grid-cols-2 gap-2 mt-4">
 <div>
 
-![GB Feature Importance](plots/gb_feature_importance.png)
-
 ## Gradient Boosting
 - Feature ranking
 - Importance scores
@@ -273,8 +270,6 @@ graph TD
 
 </div>
 <div>
-
-![Feature Correlation](plots/feature_correlation.png)
 
 ## Correlations
 - Feature relationships
@@ -314,7 +309,6 @@ layout: default
 <div class="grid grid-cols-2 gap-2 mt-4">
 <div>
 
-![RF Error Distribution](plots/rf_error_distribution.png)
 
 ## Error Analysis
 - Prediction errors
@@ -324,7 +318,6 @@ layout: default
 </div>
 <div>
 
-![GB Error Distribution](plots/gb_error_distribution.png)
 
 ## Error Analysis
 - Error patterns
