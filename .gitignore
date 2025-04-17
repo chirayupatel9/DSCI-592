@@ -176,5 +176,5 @@ cython_debug/
 node_modules/
 
 # Ignore all files in the data directory
-data/
-models/
+data/*
+models/*
