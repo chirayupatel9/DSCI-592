@@ -132,7 +132,7 @@ def predict():
                 elements = doc.get("elements", [])
                 crystal_system = doc.get("symmetry", {}).get("crystal_system", "")
                 
-                # Create feature dictionary
+                # Create feature dictionary with exact feature names
                 features = {
                     "nelements": doc.get("nelements", 0),
                     "nsites": doc.get("nsites", 0),
@@ -142,11 +142,15 @@ def predict():
                     "energy_per_atom": doc.get("energy_per_atom", 0)
                 }
                 
-                # Add element features
-                features.update(prepare_element_features(elements))
+                # Add element features with exact feature names
+                element_features = prepare_element_features(elements)
+                for element in element_features:
+                    features[element] = element_features[element]
                 
-                # Add crystal system features
-                features.update(prepare_crystal_features(crystal_system))
+                # Add crystal system features with exact feature names
+                crystal_features = prepare_crystal_features(crystal_system)
+                for crystal in crystal_features:
+                    features[crystal] = crystal_features[crystal]
                 
                 # Make predictions for each target
                 for target in models:
@@ -161,8 +165,15 @@ def predict():
                     # Get the model
                     model = get_best_model(target)
                     if model:
-                        prediction = model.predict(features_df)[0]
-                        result["predictions"][target] = float(prediction)
+                        try:
+                            # Ensure feature names match exactly
+                            feature_names = model.feature_names_in_
+                            features_df = features_df[feature_names]
+                            prediction = model.predict(features_df)[0]
+                            result["predictions"][target] = float(prediction)
+                        except Exception as e:
+                            print(f"Error predicting {target}: {str(e)}")
+                            result["predictions"][target] = None
                 
                 return jsonify(result)
             
