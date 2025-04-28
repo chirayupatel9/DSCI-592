@@ -3,15 +3,10 @@ theme: default
 layout: cover
 ---
 
-# Materials Science Machine Learning Pipeline
+# Materials Science Machine Learning
 
 A comprehensive system for predicting material properties using machine learning
 
-<div class="pt-12">
-  <span class="px-2 py-1">
-    Press <kbd>space</kbd> to navigate
-  </span>
-</div>
 
 ---
 layout: two-cols
@@ -306,26 +301,6 @@ layout: default
 </div>
 </div>
 
-<div class="grid grid-cols-2 gap-2 mt-4">
-<div>
-
-
-## Error Analysis
-- Prediction errors
-- Distribution patterns
-- Outlier detection
-
-</div>
-<div>
-
-
-## Error Analysis
-- Error patterns
-- Model behavior
-- Performance insights
-
-</div>
-</div>
 
 ---
 layout: default

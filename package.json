@@ -3,13 +3,16 @@
     "version": "1.0.0",
     "description": "Presentation for Materials Science Machine Learning Pipeline",
     "scripts": {
-      "dev": "slidev",
-      "build": "slidev build",
-      "export": "slidev export"
+        "dev": "slidev",
+        "build": "slidev build",
+        "export": "slidev export"
     },
     "dependencies": {
-      "@slidev/cli": "^0.42.0",
-      "@slidev/theme-default": "^0.21.2",
-      "@slidev/theme-seriph": "^0.21.3"
+        "@slidev/cli": "^0.42.0",
+        "@slidev/theme-default": "^0.21.2",
+        "@slidev/theme-seriph": "^0.21.3"
+    },
+    "devDependencies": {
+        "playwright-chromium": "^1.52.0"
     }
-  }
+}
