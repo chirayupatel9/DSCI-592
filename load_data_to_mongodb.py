@@ -29,7 +29,7 @@ def load_json_data(db):
     collection.create_index("formula_pretty")
     collection.create_index("image_id")  # Add index for image reference
     
-    json_dir = os.path.join(DATA_FOLDER, "data_json")
+    json_dir = os.path.join(DATA_FOLDER, "json")
     json_files = [f for f in os.listdir(json_dir) if f.endswith('.json')]
     
     print(f"Loading {len(json_files)} JSON files to MongoDB...")
@@ -65,7 +65,7 @@ def load_image_data(db):
     # Create indexes
     collection.create_index("image_id", unique=True)
     
-    img_dir = os.path.join(DATA_FOLDER, "images")
+    img_dir = os.path.join(DATA_FOLDER, "png")
     img_files = [f for f in os.listdir(img_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
     
     print(f"Loading {len(img_files)} image files to MongoDB...")
