@@ -80,7 +80,7 @@ def plot_training_history(train_losses, test_losses, target):
 
 def main():
     # Target properties to predict
-    targets = ['band_gap', 'formation_energy']  # Add more targets as needed
+    targets = ['band_gap', 'formation_energy_per_atom']  # Add more targets as needed
     
     for target in targets:
         print(f"\nTraining ResNet50 model for {target}...")
@@ -93,7 +93,7 @@ def main():
             X_train, X_test, y_train, y_test,
             target=target,
             batch_size=32,
-            num_epochs=50,
+            num_epochs=5,
             learning_rate=0.001
         )
         

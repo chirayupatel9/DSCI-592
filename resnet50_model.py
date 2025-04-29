@@ -43,7 +43,21 @@ class MaterialDataset(Dataset):
     
     def __getitem__(self, idx):
         return self.features[idx], self.targets[idx]
-
+    
+class MaterialPropertyMLP(nn.Module):
+    def __init__(self, input_dim, output_dim=1):
+        super(MaterialPropertyMLP, self).__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(input_dim, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Linear(512, output_dim)
+        )
+    
+    def forward(self, x):
+        return self.fc(x)
+    
 class ResNet50Model(nn.Module):
     def __init__(self, input_dim, output_dim=1):
         super(ResNet50Model, self).__init__()
@@ -84,16 +98,18 @@ def train_resnet50(X_train, X_test, y_train, y_test, target='band_gap',
         learning_rate: Learning rate for optimizer
     """
     # Select the least utilized GPU
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
     gpu_id = get_least_utilized_gpu()
     device = torch.device(f'cuda:{gpu_id}')
     print(f"Using GPU {gpu_id} for training")
-    
+    torch.cuda.empty_cache()
     # Create datasets
     train_dataset = MaterialDataset(X_train, y_train)
     test_dataset = MaterialDataset(X_test, y_test)
     
     # Create data loaders with multiple workers
-    num_workers = min(4, os.cpu_count() or 1)
+    num_workers = 8#min(4, os.cpu_count() or 1)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                             num_workers=num_workers, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size,
@@ -101,6 +117,7 @@ def train_resnet50(X_train, X_test, y_train, y_test, target='band_gap',
     
     # Initialize model
     model = ResNet50Model(input_dim=X_train.shape[1])
+    #model = MaterialPropertyMLP(input_dim=X_train.shape[1])
     model = model.to(device)
     
     criterion = nn.MSELoss()
@@ -115,25 +132,21 @@ def train_resnet50(X_train, X_test, y_train, y_test, target='band_gap',
     for epoch in epoch_pbar:
         model.train()
         running_loss = 0.0
-        
         # Create progress bar for batches
         batch_pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}", leave=False)
         
         for inputs, targets in batch_pbar:
             inputs, targets = inputs.to(device), targets.to(device)
-            
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
-            
             running_loss += loss.item()
             batch_pbar.set_postfix({'batch_loss': f'{loss.item():.4f}'})
         
         train_loss = running_loss / len(train_loader)
         train_losses.append(train_loss)
-        
         # Evaluate on test set
         model.eval()
         test_loss = 0.0
