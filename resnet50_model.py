@@ -12,6 +12,16 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 import joblib
 from tqdm import tqdm
+import os
+
+def get_available_gpus():
+    """Get list of available GPUs with sufficient memory."""
+    available_gpus = []
+    for i in range(torch.cuda.device_count()):
+        gpu_memory = torch.cuda.get_device_properties(i).total_memory
+        if gpu_memory > 10 * 1024 * 1024 * 1024:  # At least 10GB available
+            available_gpus.append(i)
+    return available_gpus
 
 class MaterialDataset(Dataset):
     def __init__(self, features, targets):
@@ -63,23 +73,38 @@ def train_resnet50(X_train, X_test, y_train, y_test, target='band_gap',
         num_epochs: Number of training epochs
         learning_rate: Learning rate for optimizer
     """
+    # Check for available GPUs
+    available_gpus = get_available_gpus()
+    if not available_gpus:
+        raise RuntimeError("No GPUs with sufficient memory available")
+    
     # Create datasets
     train_dataset = MaterialDataset(X_train, y_train)
     test_dataset = MaterialDataset(X_test, y_test)
     
-    # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size)
+    # Create data loaders with multiple workers
+    num_workers = min(4, os.cpu_count() or 1)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                            num_workers=num_workers, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size,
+                           num_workers=num_workers, pin_memory=True)
     
     # Initialize model
     model = ResNet50Model(input_dim=X_train.shape[1])
+    
+    # Move model to GPU(s)
+    if len(available_gpus) > 1:
+        print(f"Using {len(available_gpus)} GPUs for training")
+        model = nn.DataParallel(model, device_ids=available_gpus)
+        device = torch.device(f'cuda:{available_gpus[0]}')
+    else:
+        device = torch.device(f'cuda:{available_gpus[0]}')
+        print(f"Using GPU {available_gpus[0]} for training")
+    
+    model = model.to(device)
+    
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    
-    # Training loop
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
-    model = model.to(device)
     
     train_losses = []
     test_losses = []
@@ -128,6 +153,9 @@ def train_resnet50(X_train, X_test, y_train, y_test, target='band_gap',
         })
     
     # Save the model
+    if isinstance(model, nn.DataParallel):
+        model = model.module  # Save only the model, not the DataParallel wrapper
+    
     torch.save(model.state_dict(), f'models/resnet50_{target}.pth')
     
     return model, train_losses, test_losses
@@ -141,7 +169,12 @@ def predict_resnet50(model, X):
         X: Input features
     """
     model.eval()
-    device = next(model.parameters()).device
+    available_gpus = get_available_gpus()
+    if not available_gpus:
+        raise RuntimeError("No GPUs with sufficient memory available")
+    
+    device = torch.device(f'cuda:{available_gpus[0]}')
+    model = model.to(device)
     
     with torch.no_grad():
         X = torch.FloatTensor(X).to(device)
