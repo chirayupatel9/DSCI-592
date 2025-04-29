@@ -62,11 +62,27 @@ class DataProcessor:
             logger.error(f"Error loading data: {str(e)}")
             raise
     
+    def process_elements(self, elements_str):
+        """Convert elements string into numeric features"""
+        from collections import Counter
+        elements = elements_str.split(',')
+        element_counts = Counter(elements)
+        # Convert counts to binary (0 or 1)
+        return {f'element_{element}': 1 for element in element_counts}
+    
     def preprocess_data(self, df: pd.DataFrame) -> tuple:
         """Preprocess the materials data"""
         try:
             # Handle missing values
             df = df.dropna(subset=['band_gap', 'formation_energy'])
+            
+            # Process elements into features
+            element_features = pd.DataFrame([self.process_elements(elem) for elem in df['formula']])
+            element_features = element_features.fillna(0)  # Fill NaN with 0 for elements not present
+            
+            # Convert boolean columns to 0/1
+            bool_columns = [col for col in df.columns if df[col].dtype == bool]
+            df[bool_columns] = df[bool_columns].astype(int)
             
             # Feature engineering
             df['avg_atomic_radius'] = df['atomic_radii'].apply(lambda x: np.mean(x))
@@ -79,7 +95,10 @@ class DataProcessor:
             # Convert categorical variables
             df = pd.get_dummies(df, columns=['crystal_system', 'space_group'])
             
-            return df[features], df[target]
+            # Combine original features with element features
+            df = pd.concat([df, element_features], axis=1)
+            
+            return df, df[target]
         except Exception as e:
             logger.error(f"Error preprocessing data: {str(e)}")
             raise

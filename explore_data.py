@@ -119,6 +119,16 @@ def create_data_for_ml(db):
     # Create a dataframe with important features for ML
     features = []
     
+    # Define all possible elements
+    element_set = set(["H", "Li", "Be", "B", "C", "N", "O", "F", "Na", "Mg", "Al", "Si", "P", 
+                      "S", "Cl", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", 
+                      "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Rb", "Sr", "Y", "Zr", "Nb", 
+                      "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", 
+                      "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", 
+                      "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", 
+                      "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", 
+                      "Pa", "U", "Np", "Pu"])
+    
     for doc in json_collection.find():
         try:
             # Collect basic material information
@@ -130,7 +140,7 @@ def create_data_for_ml(db):
                 "density": doc.get("density", 0),
                 "volume": doc.get("volume", 0),
                 "band_gap": doc.get("band_gap", 0),
-                "is_metal": doc.get("is_metal", False),
+                "is_metal": int(doc.get("is_metal", False)),  # Convert boolean to int
                 "formation_energy_per_atom": doc.get("formation_energy_per_atom", 0),
                 "energy_per_atom": doc.get("energy_per_atom", 0)
             }
@@ -141,22 +151,12 @@ def create_data_for_ml(db):
             else:
                 material_info["crystal_system"] = ""
             
-            # Extract elements
+            # Extract elements and create numerical features
             elements = doc.get("elements", [])
-            material_info["elements"] = ",".join(elements)
             
-            # Add element features
-            element_set = set(["H", "Li", "Be", "B", "C", "N", "O", "F", "Na", "Mg", "Al", "Si", "P", 
-                          "S", "Cl", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", 
-                          "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Rb", "Sr", "Y", "Zr", "Nb", 
-                          "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", 
-                          "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", 
-                          "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", 
-                          "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", 
-                          "Pa", "U", "Np", "Pu"])
-            
+            # Add element features (binary 0/1)
             for element in element_set:
-                material_info[f"contains_{element}"] = element in elements
+                material_info[f"element_{element}"] = int(element in elements)
             
             # Add dielectric constant if available
             if "dielectric" in doc and "n" in doc["dielectric"]:
@@ -171,6 +171,10 @@ def create_data_for_ml(db):
     
     # Convert to dataframe
     df = pd.DataFrame(features)
+    
+    # Convert any remaining boolean columns to integers
+    bool_columns = df.select_dtypes(include=['bool']).columns
+    df[bool_columns] = df[bool_columns].astype(int)
     
     # Save to CSV for ML tasks
     df.to_csv("materials_for_ml.csv", index=False)
