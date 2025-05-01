@@ -98,7 +98,7 @@ def train_resnet50(X_train, X_test, y_train, y_test, target='band_gap',
         learning_rate: Learning rate for optimizer
     """
     # Select the least utilized GPU
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "backend:cudaMallocAsync"
 
     gpu_id = get_least_utilized_gpu()
     device = torch.device(f'cuda:{gpu_id}')
@@ -136,8 +136,9 @@ def train_resnet50(X_train, X_test, y_train, y_test, target='band_gap',
         batch_pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}", leave=False)
         
         for inputs, targets in batch_pbar:
-            inputs, targets = inputs.to(device), targets.to(device)
+            inputs, targets = inputs.cuda(), targets.cuda()
             optimizer.zero_grad()
+            print(torch.cuda.memory_summary())
             outputs = model(inputs)
             loss = criterion(outputs, targets)
             loss.backward()
