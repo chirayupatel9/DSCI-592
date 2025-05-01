@@ -27,7 +27,7 @@ def get_least_utilized_gpu():
         min_usage = min(memory_usage)
         gpu_id = memory_usage.index(min_usage)
         
-        print(f"Selected GPU {gpu_id} with {min_usage}MB memory usage")
+        # print(f"Selected GPU {gpu_id} with {min_usage}MB memory usage")
         return gpu_id
     except Exception as e:
         print(f"Error getting GPU usage: {e}")
@@ -98,7 +98,7 @@ def train_resnet50(X_train, X_test, y_train, y_test, target='band_gap',
         learning_rate: Learning rate for optimizer
     """
     # Select the least utilized GPU
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "backend:cudaMallocAsync"
+    # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "backend:cudaMallocAsync"
 
     gpu_id = get_least_utilized_gpu()
     device = torch.device(f'cuda:{gpu_id}')
@@ -116,7 +116,7 @@ def train_resnet50(X_train, X_test, y_train, y_test, target='band_gap',
                            num_workers=num_workers, pin_memory=True)
     
     # Initialize model
-    model = ResNet50Model(input_dim=X_train.shape[1])
+    model = MaterialPropertyMLP(input_dim=X_train.shape[1])
     #model = MaterialPropertyMLP(input_dim=X_train.shape[1])
     model = model.to(device)
     
@@ -138,7 +138,7 @@ def train_resnet50(X_train, X_test, y_train, y_test, target='band_gap',
         for inputs, targets in batch_pbar:
             inputs, targets = inputs.cuda(), targets.cuda()
             optimizer.zero_grad()
-            print(torch.cuda.memory_summary())
+            # print(torch.cuda.memory_summary())
             outputs = model(inputs)
             loss = criterion(outputs, targets)
             loss.backward()
