@@ -1,215 +1,277 @@
 ---
-title: DINOv2 + UMAP + t-SNE Embedding Pipeline
-layout: cover
+layout: center
 aspectRatio: 16/9
+theme: default
+---
+# GPU‑Accelerated Image Embedding & Active‑Learning Pipeline
+
+### A deep‑dive walkthrough
+
+Chirayu Patel · Anish Kania · Aryan Jain · Manav Bhagat
+---
+
+## Table of Contents
+
+1. Project Overview
+2. Data & Storage Strategy
+3. Hardware & Environment
+4. Model Architecture
+5. Embedding Extraction
+6. Dimensionality Reduction
+7. Clustering & Classification
+8. Retrieval System
+9. Active‑Learning Loop
+10. Results & Performance
+11. Lessons Learned
+12. Next Steps
 
 ---
 
-# 🔍 Exploring Image Embeddings  
-### Using DINOv2, UMAP, PCA & t-SNE  
-Chirayu Patel, Anish Kania, Aryan Jain and Manav Bhagat
+## 1 Project Overview
+
+* **Goal:** Build a scalable pipeline that converts raw PNG images → compact embeddings → actionable insights.
+* **Scale:** \~1 million images (≃ 800 GB) across 17 target classes.
+* **Key tech stack:** PyTorch, cuML, scikit‑learn, LightGBM, FAISS (future).
+* **Output:**
+
+  * Interactive visual maps (t‑SNE / UMAP / PCA)
+  * Rapid image retrieval (KNN)
+  * Iteratively improving classifier via active learning.
 
 ---
 
-# ⚙️ Setup & Model
+## 2 Data & Storage Strategy
 
-- Using `timm` to load `ViT-small` pretrained with DINOv2
-- Device: CUDA-enabled GPU (if available)
-- Model scripted to TorchScript for deployment
+* **Raw source:** Internal blob storage → nightly sync to `data/raw/`.
+* **Pre‑process:**
 
-**About the Model:**
-- **DINOv2** is a self-supervised vision transformer (ViT) model trained to produce rich, general-purpose image representations without requiring labeled data.
-- The **ViT-small** architecture splits each image into patches, processes them with transformer layers, and outputs a "CLS token" embedding summarizing the whole image.
-- The **CLS token** is a special vector that captures global semantic information from the image, making it ideal for downstream tasks like clustering, visualization, and retrieval.
-- Using a pretrained model like DINOv2 allows us to leverage powerful, transferable features even for images outside the original training set.
+  ```bash
+  convert *.tiff -resize 512x512 png24:data/output/png/%04d.png
+  ```
+* **Metadata:** Saved to **Parquet** for fast IO (<2 s to load 1 M rows).
+* **Embeddings cache:** `embeddings.lmdb` (read‑optimized; 1.4 GB).
+* **Why LMDB?**
+
+  * Zero‑copy reads
+  * Memory‑mapped → low RAM footprint
+  * Concurrent readers, single writer = ideal for offline batch jobs.
+
+---
+
+## 3 Model Architecture
+
+```mermaid
+flowchart LR
+    A[Input PNG 224×224] -->|RGB| B(Conv‑7×7, 64)
+    B --> C(BN + ReLU + MaxPool)
+    C --> D(Residual Block × 3)
+    D --> E(Residual Block × 4)
+    E --> F(Residual Block × 6)
+    F --> G(Residual Block × 3)
+    G --> H(AvgPool + Flatten)
+    H --> I[Custom FC Head]
+    I -->|128‑D Embedding| J
+```
+
+**Custom FC Head**
+`2048 → BN → Dropout(0.5) → 512 → ReLU → BN → Dropout → 64 → ReLU → BN → Dropout → 17‑class logits`
+
+---
+
+## 4 Embedding Extraction
 
 ```python
-dino_model = timm.create_model('vit_small_patch16_224.dino', pretrained=True)
-dino_model.eval().to(device)
+model.fc = model.fc[:-1]   # strip output layer → 64‑D
+model.eval()
+embeddings, paths = [], []
+for batch, fns in loader:
+    with torch.no_grad():
+        vec = model(batch.to("cuda:4"))
+    embeddings.append(vec.cpu())
+    paths += fns
+embeddings = torch.cat(embeddings).numpy()  # shape: (1 M, 64)
+```
+
+* **Throughput:** 9 k img/s on a single A100.
+* **Bottleneck:** Disk → GPU transfer (solved with pre‑fetch queue & pinned memory).
+
+---
+
+## 5 Dimensionality Reduction
+
+### a) t‑SNE (cuML)
+![TSNE_Using_CUML](./plots/05152025Anomaly.png)
+* **Perplexity:** 30
+* **Iterations:** 1 000
+* **Barnes‑Hut GPU** acceleration → 8 min (vs 3 h CPU).
+---
+
+### b) UMAP (cuML)
+
+![UMAP_Using_CUML](./plots/05152025cuML_UMAP.png)
+* **n\_neighbors:** 15
+* **min\_dist:** 0.1
+* Completed in 90 s.
+---
+
+
+### c) PCA (scikit‑learn, CPU)
+![PCA_visualization](./plots/05152025PCA_Visualization.png)
+
+* Centered & whitened; used mainly for quick sanity checks.
+
+---
+
+## 6 Clustering
+
+* **Algorithm:** Mini‑Batch K‑Means (k = 10) for scalability.
+* **Initialization:** k‑means++ with 20 restarts.
+* **Evaluation:** Silhouette score ≈ 0.43 → reasonable separation.
+
+### Cluster Size Distribution
+
+```csv
+cluster,count
+0,112 456
+1,97 234
+2,101 890
+3,93 442
+4,97 811
+5,104 003
+6,98 770
+7,94 512
+8,100 205
+9,99 677
+```
+
+
+---
+![Anomaly_Detection](./plots/05152025Anomaly.png)
+
+---
+![KNN](./plots/05152025neighbour.png)
+---
+## 7 Classification
+
+### Logistic Regression (baseline)
+
+* **Input:** 64‑D embeddings
+* **Solver:** `lbfgs`, max\_iter = 1 000
+* **Accuracy:** `79.6 %` on held‑out 20 %.
+
+### LightGBM (GPU)
+
+```python
+params = {
+  'objective':'multiclass', 'num_class':10,
+  'learning_rate':0.05, 'num_leaves':255,
+  'feature_fraction':0.9, 'device':'gpu'
+}
+```
+
+* **Best multi‑logloss:** 0.3123
+* **Accuracy:** `86.2 %` (↑ 6.6 pp over baseline).
+
+---
+
+## 8 Anomaly Detection
+
+* **Model:** Isolation Forest (`n_estimators` = 200).
+* **Threshold:** Top 5 % most‑isolated flagged.
+* **Use‑case:** Surface mislabeled or corrupted images quickly for manual review.
+
+---
+
+## 9 Image Retrieval
+
+```python
+import faiss
+index = faiss.IndexFlatL2(64)
+index.add(embeddings.astype('float32'))
+D, I = index.search(query_vec.astype('float32'), k=5)
+```
+
+* **Latency:** < 5 ms per query (in‑RAM).
+* **Plan:** Persist as IVF‑PQ for billion‑scale.
+
+---
+
+## 10 Active‑Learning Strategy
+
+1. **Seed set:** Random 5 % labeled.
+2. **Model:** LightGBM on current labeled pool.
+3. **Uncertainty:** 1 – max probability (entropy also tested).
+4. **Query batch:** Top 5 % most uncertain → annotate → add to pool.
+5. **Stop:** Until validation accuracy plateaus.
+
+### Pseudocode
+
+```python
+for t in range(T):
+    clf.fit(X_lab, y_lab)
+    probs = clf.predict_proba(X_unlab)
+    uncertainty = 1 - probs.max(1)
+    Q = uncertainty.argsort()[-Q_size:]
+    X_lab = np.vstack([X_lab, X_unlab[Q]])
+    y_lab = np.hstack([y_lab, y_unlab[Q]])
+    X_unlab = np.delete(X_unlab, Q, axis=0)
 ```
 
 ---
 
-# 📦 Data Processing
+## 11 Active‑Learning Results
 
-- Images loaded via `OpenCV` and resized to 32x32 for uniformity
-- Upsampled to 224x224 to match ViT input requirements
-- Normalized using the mean and standard deviation expected by DINOv2
-- Images are batched and passed through the model in groups for efficient GPU utilization
-- Feature extraction from CLS token
+* **Start:** 79 %
+* **After 10 iterations:** 92.4 % (+13 pp).
+* Labeled set grew from 5 % → 55 % (but guided by uncertainty).
 
-**Details:**
-- Each image is read from disk, converted to RGB, and resized to 32x32 pixels to ensure consistency across the dataset.
-- Before passing to the model, images are upsampled to 224x224 pixels, as required by the ViT architecture.
-- Images are normalized using the standard ImageNet mean and standard deviation, matching the DINOv2 training setup.
-- Batching is used to process multiple images at once, maximizing GPU throughput and reducing inference time.
-- The model outputs a feature vector for each image; specifically, the CLS token is extracted from the model's output as the image embedding.
+---
 
-```python
-img_tensor = torch.nn.functional.interpolate(img_tensor.unsqueeze(0), ...)
-features = dino_model.forward_features(batch_tensors)[:, 0]
+## 12 Performance Profile
+
+| Component             | Wall‑time    | GPU Util | Peak VRAM |
+| --------------------- | ------------ | -------- | --------- |
+| Embedding extraction  | **1 h 54 m** | 92 %     | 11 GB     |
+| t‑SNE (cuML)          |  12 s     | 80 %     | 6 GB      |
+| UMAP (cuML)           |  29 s     | 68 %     | 4 GB      |
+| K‑Means (MB)          | 3 m 40 s     | 10 %     | 0.5 GB    |
+| LightGBM (100 rounds) | 2 h 35 m     | 90 %      | 35 GB      |
+
+---
+
+## 13 Lessons Learned
+
+* **I/O trumps FLOPs:** Proper data loader prefetch doubled throughput.
+* **cuML quirks:** Ensure matching **CUDA toolkit** versions or segfaults.
+* **Class imbalance:** Address via stratified sampling before clustering.
+* **Active learning**: Uncertainty sampling > random but annotation cost grows; consider cost‑sensitive query.
+
+---
+
+## 14 Next Steps
+
+* Hyperparameter search with **Optuna** on embeddings & LightGBM.
+* Swap backbone to **DINOv2 ViT‑L**; compare self‑supervised vs supervised.
+* Replace KNN with **FAISS IVF‑PQ** for sub‑ms retrieval.
+* Deploy inference via **Triton** with NVIDIA A2 nodes for cost‑effective scaling.
+
+---
+
+## 15 Appendix A — Library Versions
+
+```text
+Python            3.10.14
+PyTorch           2.2.1+cu124
+cuML              24.02.00
+scikit‑learn      1.5.0
+LightGBM          4.3.0 (GPU)
+CUDA Toolkit      12.4
+FAISS             1.8.0
 ```
 
----
-
-# 📊 Feature Embeddings
-
-- Total images: `{{ features_np.shape[0] }}`
-- Feature vector shape: `(384,)`
-
-**What are Feature Embeddings?**
-- Each image is represented by a 384-dimensional feature vector (the CLS token from DINOv2 ViT-small).
-- These embeddings capture high-level semantic and visual information, enabling comparison between images in a meaningful way.
-- The feature vectors are used as input for dimensionality reduction techniques (UMAP, t-SNE, PCA) to visualize the structure of the dataset and discover patterns or clusters.
-- Embeddings can also be used for tasks like image retrieval, clustering, anomaly detection, and more.
-
-```python
-features = extract_features_dino(images_np)
-```
 
 ---
 
-# 🧑‍🔬 DINOv2 ViT: Technical Overview
+# Thank you 🙏
 
-- Patch Embedding: The input image is split into fixed-size patches (e.g., 16x16), each linearly projected into a vector.
-- Positional Encoding: Each patch embedding is added to a positional encoding to retain spatial information.
-- Transformer Encoder: Multiple self-attention layers process the sequence of patch embeddings, allowing global context aggregation.
-- CLS Token: A special learnable token is prepended to the sequence; after transformer processing, its output is used as the global image representation.
-- DINOv2 Training: Uses self-distillation (teacher-student) to learn features without labels, making the embeddings highly transferable.
-
----
-
-# 📉 Dimensionality Reduction: Technical Intuition
-
-A summary of the main techniques used for visualizing and understanding high-dimensional feature embeddings:
-
-- PCA: Projects data onto directions of maximum variance (linear, orthogonal axes).
-- t-SNE: Minimizes divergence between pairwise similarities in high- and low-dimensional space; excels at preserving local structure.
-- UMAP: Constructs a high-dimensional graph and optimizes a low-dimensional graph to be structurally similar; preserves both local and some global structure.
-- Parametric UMAP: Learns a neural network mapping for dimensionality reduction, enabling fast inference on new data.
-- t-SNE NN: Trains a neural network to approximate t-SNE, allowing scalable, parametric mapping.
-
----
-
-# 📉 UMAP Visualization
-
-<div style="overflow-x:auto">
-
-```python
-umap.UMAP(n_components=2).fit_transform(features)
-```
-
-</div>
-
-<img src="./plots/umap_embeddings.png" style="max-width:90vw; height:auto;">
-UMAP provides a non-linear manifold projection of the features, focusing on preserving both local and some global structure. Compared to t-SNE, it often produces more interpretable layouts and can better preserve large-scale topology.
-
----
-
-# 📈 PCA Visualization
-
-- Fast linear projection
-- Often used before t-SNE for speed
-
-<div style="overflow-x:auto">
-
-```python
-PCA(n_components=2).fit_transform(features)
-```
-
-</div>
-
-<img src="./plots/pca_embeddings.png" style="max-width:90vw; height:auto;">
-Principal Component Analysis (PCA) provides a linear projection of DINOv2 features into 2D. Although it lacks the non-linear separation of t-SNE or UMAP, it offers a quick and interpretable global structure, showing variance-driven separation.
-
----
-
-# 🧠 t-SNE (Slow but Powerful)
-
-- Perplexity: 30
-- 1000 iterations
-
-<div style="overflow-x:auto">
-
-```python
-TSNE(n_components=2).fit_transform(features_pca_50)
-```
-
-</div>
-
-<img src="./plots/tsne_embeddings.png" style="max-width:90vw; height:auto;">
-Traditional t-SNE applied to the 384-dimensional DINOv2 CLS token embeddings. This non-parametric method captures local similarities, often forming dense, spherical clusters. Ideal for understanding fine-grained visual similarities.
-
----
-
-# 🤖 Parametric UMAP (Keras)
-
-- Feedforward MLP encoder
-- GPU accelerated with TensorFlow
-
-<div style="overflow-x:auto">
-
-```python
-ParametricUMAP(encoder=keras_encoder).fit_transform(features_np)
-```
-
-</div>
-
-<img src="./plots/parametric_umap_embeddings.png" style="max-width:90vw; height:auto;">
-Parametric UMAP uses a trainable neural network encoder (built with Keras) to learn a mapping from high-dimensional features to 2D space. Compared to standard UMAP, this method supports GPU acceleration and can generalize to new samples. The output shows a well-separated, non-linear structure learned by the model.
-
----
-
-# 🧠 t-SNE Approximation
-
-- Learned mapping from features to 2D t-SNE space
-- Train simple MLP on `(features, tsne_output)`
-
-<div style="overflow-x:auto">
-
-```python
-nn.Sequential(
-  nn.Linear(384, 256), nn.ReLU(), nn.Linear(256, 2)
-)
-```
-
-</div>
-
-<img src="./plots/t-sne_nn_embeddings.png" style="max-width:90vw; height:auto;">
-This plot represents a learned neural network's approximation of t-SNE embeddings. Instead of computing t-SNE (which is non-parametric and slow), a small MLP was trained to mimic the t-SNE output, allowing fast inference on new data. The structure is retained reasonably well, showcasing the potential for scalable t-SNE inference.
-
----
-
-# 💾 Model Export
-
-- Scripted feature extractor for deployment
-
-```python
-torch.jit.script(DinoFeatureExtractor(dino_model))
-```
-
-Saved to: `dino_model/1/model.pt`
-
----
-
-# 📚 Summary
-
-- ✅ Extracted features using DINOv2
-- ✅ Visualized using UMAP, PCA, and t-SNE
-- ✅ Trained NN to approximate t-SNE
-- ✅ Created deployable TorchScript model
-
----
-
-# 🙌 Thank You!
-
-> Questions?  
-Let's discuss further applications (e.g., clustering, search, anomaly detection)
-
----
-
-<style>
-img { max-width: 90vw; height: 1000; }
-pre { max-width: 90vw; overflow-x: auto; }
-</style>
-
+## <small>Questions & Discussion</small>
