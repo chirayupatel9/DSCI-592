@@ -1,16 +1,25 @@
 ---
-layout: center
-aspectRatio: 16/9
 theme: default
+class: img-contain
+mdc: true
 ---
-# GPU‑Accelerated Image Embedding & Active‑Learning Pipeline
+<style>
+.img-contain img {
+  max-width: 80%;   /* don't let images exceed 80% of slide width */
+  height: auto;     /* maintain aspect ratio */
+  display: block;
+  margin: 0 auto;   /* center images horizontally */
+}
+</style>
+# Image Embedding
 
 ### A deep‑dive walkthrough
 
 Chirayu Patel · Anish Kania · Aryan Jain · Manav Bhagat
+
 ---
 
-## Table of Contents
+## Today's Agenda
 
 1. Project Overview
 2. Data & Storage Strategy
@@ -40,6 +49,49 @@ Chirayu Patel · Anish Kania · Aryan Jain · Manav Bhagat
 
 ---
 
+## 1.1 Use-Case Goal & Applicability
+
+### Use-Case Goal
+Enable scalable and efficient image understanding and decision-making by converting large volumes of unlabeled image data into meaningful, compact embeddings that support tasks such as:
+- Visual clustering
+- Automated classification
+- Similar image retrieval
+- Error detection  
+→ all with minimal human labeling through an active learning loop.
+
+---
+
+### Real-World Applicability
+
+- **Medical diagnostics** → Flagging anomalies in scans with minimal labeled data.
+- **E-commerce** → Retrieving visually similar products from a large catalog.
+- **Surveillance systems** → Clustering suspicious patterns or unknown objects automatically.
+- **Scientific datasets** → Exploring high-dimensional imagery (e.g., astronomy, microscopy) using visual embeddings.
+---
+
+## 1.2 Dataset Description
+
+### Origin and Composition
+
+- **~1 million crystal images** spanning diverse material types and formations.
+- High-resolution captures, standardized to **224×224** pixels for consistency.
+- Images acquired through meticulous experiments by **Dr. Agar and his research team**, specializing in materials science.
+
+---
+
+### Purpose and Richness
+
+- Captured under varying conditions to enhance variability and robustness.
+- Supports a wide range of downstream tasks:
+  - **Structural classification** of crystals
+  - **Visual anomaly detection** (defects, impurities)
+  - **Similarity-based retrieval** of crystal types
+  - **Cluster discovery** in high-dimensional feature spaces
+
+---
+
+---
+
 ## 2 Data & Storage Strategy
 
 * **Raw source:** Internal blob storage → nightly sync to `data/raw/`.
@@ -48,7 +100,7 @@ Chirayu Patel · Anish Kania · Aryan Jain · Manav Bhagat
   ```bash
   convert *.tiff -resize 512x512 png24:data/output/png/%04d.png
   ```
-* **Metadata:** Saved to **Parquet** for fast IO (<2 s to load 1 M rows).
+* **Metadata:** Saved to **Parquet** for fast IO (< 2 s to load 1 M rows).
 * **Embeddings cache:** `embeddings.lmdb` (read‑optimized; 1.4 GB).
 * **Why LMDB?**
 
@@ -100,25 +152,30 @@ embeddings = torch.cat(embeddings).numpy()  # shape: (1 M, 64)
 ## 5 Dimensionality Reduction
 
 ### a) t‑SNE (cuML)
-![TSNE_Using_CUML](./plots/05152025Anomaly.png)
+
+
 * **Perplexity:** 30
 * **Iterations:** 1 000
 * **Barnes‑Hut GPU** acceleration → 8 min (vs 3 h CPU).
+
+![TSNE Using CUML](./plots/05152025cumltsne.png){width=350px}
 ---
 
 ### b) UMAP (cuML)
 
-![UMAP_Using_CUML](./plots/05152025cuML_UMAP.png)
+
 * **n\_neighbors:** 15
 * **min\_dist:** 0.1
 * Completed in 90 s.
+![width:400px height:300px](./plots/05152025cuML_UMAP.png){width=350px}
+
 ---
 
-
 ### c) PCA (scikit‑learn, CPU)
-![PCA_visualization](./plots/05152025PCA_Visualization.png)
+
 
 * Centered & whitened; used mainly for quick sanity checks.
+![PCA Visualization](./plots/05152025PCA_Visualization.png){width=350px}
 
 ---
 
@@ -132,25 +189,28 @@ embeddings = torch.cat(embeddings).numpy()  # shape: (1 M, 64)
 
 ```csv
 cluster,count
-0,112 456
-1,97 234
-2,101 890
-3,93 442
-4,97 811
-5,104 003
-6,98 770
-7,94 512
-8,100 205
-9,99 677
+0,112456
+1,97234
+2,101890
+3,93442
+4,97811
+5,104003
+6,98770
+7,94512
+8,100205
+9,99677
 ```
 
+---
+
+![Anomaly Detection](./plots/05152025Anomaly.png){width=550px}
 
 ---
-![Anomaly_Detection](./plots/05152025Anomaly.png)
+
+![KNN Neighbours](./plots/05152025neighbour.png)
 
 ---
-![KNN](./plots/05152025neighbour.png)
----
+
 ## 7 Classification
 
 ### Logistic Regression (baseline)
@@ -163,9 +223,9 @@ cluster,count
 
 ```python
 params = {
-  'objective':'multiclass', 'num_class':10,
-  'learning_rate':0.05, 'num_leaves':255,
-  'feature_fraction':0.9, 'device':'gpu'
+  'objective': 'multiclass', 'num_class': 10,
+  'learning_rate': 0.05, 'num_leaves': 255,
+  'feature_fraction': 0.9, 'device': 'gpu'
 }
 ```
 
@@ -223,25 +283,25 @@ for t in range(T):
 
 * **Start:** 79 %
 * **After 10 iterations:** 92.4 % (+13 pp).
-* Labeled set grew from 5 % → 55 % (but guided by uncertainty).
+* Labeled set grew from 5 % → 55 % (guided by uncertainty).
 
 ---
 
 ## 12 Performance Profile
 
-| Component             | Wall‑time    | GPU Util | Peak VRAM |
-| --------------------- | ------------ | -------- | --------- |
-| Embedding extraction  | **1 h 54 m** | 92 %     | 11 GB     |
-| t‑SNE (cuML)          |  12 s     | 80 %     | 6 GB      |
-| UMAP (cuML)           |  29 s     | 68 %     | 4 GB      |
-| K‑Means (MB)          | 3 m 40 s     | 10 %     | 0.5 GB    |
-| LightGBM (100 rounds) | 2 h 35 m     | 90 %      | 35 GB      |
+| Component             | Wall‑time | GPU Util | Peak VRAM |
+| --------------------- | --------- | -------- | --------- |
+| Embedding extraction  | 1 h 54 m  | 92 %     | 11 GB     |
+| t‑SNE (cuML)          | 12 s      | 80 %     | 6 GB      |
+| UMAP (cuML)           | 29 s      | 68 %     | 4 GB      |
+| K‑Means (MB)          | 3 m 40 s  | 10 %     | 0.5 GB    |
+| LightGBM (100 rounds) | 2 h 35 m  | 90 %     | 35 GB     |
 
 ---
 
 ## 13 Lessons Learned
 
-* **I/O trumps FLOPs:** Proper data loader prefetch doubled throughput.
+* **I/O trumps FLOPs:** Proper data loader prefetch doubled throughput.
 * **cuML quirks:** Ensure matching **CUDA toolkit** versions or segfaults.
 * **Class imbalance:** Address via stratified sampling before clustering.
 * **Active learning**: Uncertainty sampling > random but annotation cost grows; consider cost‑sensitive query.
@@ -257,21 +317,5 @@ for t in range(T):
 
 ---
 
-## 15 Appendix A — Library Versions
-
-```text
-Python            3.10.14
-PyTorch           2.2.1+cu124
-cuML              24.02.00
-scikit‑learn      1.5.0
-LightGBM          4.3.0 (GPU)
-CUDA Toolkit      12.4
-FAISS             1.8.0
-```
-
-
----
-
-# Thank you 🙏
-
-## <small>Questions & Discussion</small>
+# Thank You
+## If you have any questions let us know
